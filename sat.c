@@ -2,9 +2,8 @@
 #include <pthread.h>
 #include <time.h>
 #include <limits.h>
-
-#define NUM_POLYGONS 2
-#define NUM_THREADS 4
+#include <stdio.h>
+#include <string.h>
 
 typedef struct {
     int x, y;
@@ -20,6 +19,7 @@ typedef struct {
 
 static Polygon * polygons;
 static Contact * contacts;
+static int NUM_POLYGONS, NUM_THREADS;
 
 void square(Polygon * polygon, int size) {
     polygon->vertices[0] = polygon->x;
@@ -49,10 +49,10 @@ void createPolygons() {
         int size = rand() % 10 + 3;
         square(&polygons[i], size);
 
-        int k = 0;
-        for(k = 0; k < polygons[i].num_vertices*2; k+=2) {
-            printf("polygon %d vertice %d: %d %d\n", i, k, polygons[i].vertices[k], polygons[i].vertices[k+1]);
-        }
+        // int k = 0;
+        // for(k = 0; k < polygons[i].num_vertices*2; k+=2) {
+        //     printf("polygon %d vertice %d: %d %d\n", i, k, polygons[i].vertices[k], polygons[i].vertices[k+1]);
+        // }
 
         // int j = 0;
         // for(j = 0; j < num_vertices; j++) {
@@ -153,13 +153,13 @@ static void * detectCollisions(void * r) {
                     overlap = i_proj[0] - j_proj[1];
 
                 if(overlap > 0) {
-                    printf("Not intersecting!\n");
+                    // printf("Not intersecting!\n");
                     break;
                 }
-                printf("Overlap: %d\n", overlap);
+                // printf("Overlap: %d\n", overlap);
             }
 
-            printf("intersecting!\n");
+            // printf("Intersecting!\n");
 
             free(i_edges);
             free(j_edges);
@@ -170,14 +170,21 @@ static void * detectCollisions(void * r) {
 
 
 
-int main() {
-
-    printf("Separating Axis v1.0: %d polygons %d threads\n", NUM_POLYGONS, NUM_THREADS);
-
+int main(int argc, char * argv[]) {
     /* Initialize */
     srand(time(NULL));
     register int i;
     struct timeval start, end;
+    /* check command line */
+    if (argc != 3) {
+        fprintf(stderr, "usage: %s number_of_polygons number_of_threads\n", argv[0]);
+        exit(-1);
+    }
+
+    NUM_POLYGONS = atoi(argv[1]);
+    NUM_THREADS = atoi(argv[2]);
+    
+    printf("Separating Axis v1.0: %d polygons %d threads\n", NUM_POLYGONS, NUM_THREADS);
 
     /* Generate Threads */
     pthread_t threads[NUM_THREADS-1];
