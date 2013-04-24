@@ -200,17 +200,24 @@ static void * updateBodies(void * r) {
 
     for(i = rank; i < num_contacts; i += num_threads) {
         if(contacts[i].used_flag == 1) {
+
+            float half_pen = contacts[i].penetration/2
+            float dx = contacts[i].n_x * half_pen;
+            float dy = contacts[i].n_y * half_pen;
+
             // get lock for p1
             pthread_mutex_lock(&contacts[i].p1->lock);
             // update p1- moving it 1/2 the penetration along the normal axis
-            contacts[i].p1->x += contacts[i].n_x * contacts[i].penetration/2;
+            contacts[i].p1->x += dx;
+            contacts[i].p1->y += dy;
             // release lock
             pthread_mutex_unlock(&contacts[i].p1->lock);
 
             // get lock for p2
             pthread_mutex_lock(&contacts[i].p2->lock);
-            // update p2- moving it 1/2 the penetration along the normal axis
-            contacts[i].p2->x += contacts[i].n_x * contacts[i].penetration/2;
+            // update p2- moving it 1/2 the penetration away on the normal axis
+            contacts[i].p2->x -= dx;
+            contacts[i].p2->y -= dy;
             // release lock
             pthread_mutex_unlock(&contacts[i].p2->lock);
         }
@@ -219,6 +226,7 @@ static void * updateBodies(void * r) {
 
 int main(int argc, char * argv[]) {
     /* Initialize */
+    printf("%d/n", sizeof(Contact));
     srand(time(NULL));
     register int i;
     struct timeval start, end;
