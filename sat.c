@@ -19,11 +19,12 @@ typedef struct {
     Polygon * p2;
     float n_x, n_y; /* normal axis to the polygon */
     float penetration;
+    int used_flag;
 } Contact;
 
 static Polygon * polygons;
 static Contact * contacts;
-static int NUM_POLYGONS, num_threads, num_contacts;
+int num_polygons, num_threads, num_contacts;
 
 void square(Polygon * polygon, int size) {
     polygon->vertices[0] = polygon->x;
@@ -41,7 +42,7 @@ void square(Polygon * polygon, int size) {
 
 void createPolygons() {
     int i = 0;
-    for(i = 0; i < NUM_POLYGONS; i++) {
+    for(i = 0; i < num_polygons; i++) {
         float x = 5; // generate position
         float y = 5; // generate position
         int num_vertices = 4; // generate as well
@@ -58,7 +59,7 @@ void createPolygons() {
 
 void printPolygons() {
     int i;
-    for(i = 0; i < NUM_POLYGONS; i++) {
+    for(i = 0; i < num_polygons; i++) {
         printf("Polygon %d: %d %d %d\n", i, polygons[i].x, polygons[i].y, polygons[i].num_vertices);
     }
 }
@@ -115,8 +116,8 @@ float * getEdges(Polygon * polygon) {
 static void * detectCollisions(void * r) {
     register int i, j;
     register long rank = (long) r;
-    for(i = rank; i < NUM_POLYGONS; i += num_threads) {
-        for(j = i+1; j < NUM_POLYGONS; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
+    for(i = rank; i < num_polygons; i += num_threads) {
+        for(j = i+1; j < num_polygons; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
             // invoke cuda stuff
             float * i_edges = getEdges(&polygons[i]);
             float * j_edges = getEdges(&polygons[j]);
@@ -128,6 +129,9 @@ static void * detectCollisions(void * r) {
             memcpy(edges + (polygons[i].num_vertices*2), j_edges, sizeof(float) * polygons[j].num_vertices*2);
 
             int k = 0;
+            float min_overlap = FLT_MAX;
+            float min_axis[2];
+            int collision = 1; // True
             for(k = 0; k < num_edges; k+=2) {
                 float i_proj[2], j_proj[2];
 
@@ -144,7 +148,6 @@ static void * detectCollisions(void * r) {
                 axis[1] = axis[1] * rsqrtf(lengthsq + esp);
                 */
 
-                
                 axis[0] = axis[0] / sqrtf(lengthsq + esp);
                 axis[1] = axis[1] / sqrtf(lengthsq + esp);
 
@@ -161,11 +164,27 @@ static void * detectCollisions(void * r) {
 
                 if(overlap > 0) {
                     // printf("Not intersecting!\n");
+                    collision = 0;
                     break;
                 }
+
+                if(overlap < min_overlap) {
+                    min_overlap = overlap;
+                    min_axis[0] = axis[0];
+                    min_axis[1] = axis[1];
+                }
+
                 // printf("Overlap: %d\n", overlap);
             }
 
+            if(collision == 1) {
+                contacts[rank + j].p1 = &polygons[i];
+                contacts[rank + j].p2 = &polygons[j];
+                contacts[rank + j].n_x = min_axis[0];
+                contacts[rank + j].n_y = min_axis[1];
+                contacts[rank + j].penetration = min_overlap;
+                contacts[rank + j].used_flag = 1;
+            }
             // printf("Intersecting!\n");
 
             free(i_edges);
@@ -178,20 +197,23 @@ static void * detectCollisions(void * r) {
 static void * updateBodies(void * r) {
     register int i;
     register long rank = (long) r;
-    for(i = rank; i < num_contacts; i += num_threads) {
-        // get lock for p1
-        pthread_mutex_lock(&contacts[i].p1->lock);
-        // update p1- moving it 1/2 the penetration along the normal axis
-        contacts[i].p1->x += contacts[i].n_x * contacts[i].penetration/2;
-        // release lock
-        pthread_mutex_unlock(&contacts[i].p1->lock);
 
-        // get lock for p2
-        pthread_mutex_lock(&contacts[i].p2->lock);
-        // update p2- moving it 1/2 the penetration along the normal axis
-        contacts[i].p2->x += contacts[i].n_x * contacts[i].penetration/2;
-        // release lock
-        pthread_mutex_unlock(&contacts[i].p2->lock);
+    for(i = rank; i < num_contacts; i += num_threads) {
+        if(contacts[i].used_flag == 1) {
+            // get lock for p1
+            pthread_mutex_lock(&contacts[i].p1->lock);
+            // update p1- moving it 1/2 the penetration along the normal axis
+            contacts[i].p1->x += contacts[i].n_x * contacts[i].penetration/2;
+            // release lock
+            pthread_mutex_unlock(&contacts[i].p1->lock);
+
+            // get lock for p2
+            pthread_mutex_lock(&contacts[i].p2->lock);
+            // update p2- moving it 1/2 the penetration along the normal axis
+            contacts[i].p2->x += contacts[i].n_x * contacts[i].penetration/2;
+            // release lock
+            pthread_mutex_unlock(&contacts[i].p2->lock);
+        }
     }
 }
 
@@ -206,40 +228,45 @@ int main(int argc, char * argv[]) {
         exit(-1);
     }
 
-    NUM_POLYGONS = atoi(argv[1]);
+    num_polygons = atoi(argv[1]);
     num_threads = atoi(argv[2]);
     
-    printf("Separating Axis v1.0: %d polygons %d threads\n", NUM_POLYGONS, num_threads);
+    printf("Separating Axis v1.0: %d polygons %d threads\n", num_polygons, num_threads);
+
+    /* Allocate Arrays */
+    num_contacts = num_polygons * num_polygons;
+    polygons = malloc(sizeof(Polygon) * num_polygons);
+    contacts = malloc(sizeof(Contact) * num_contacts);
+    for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
 
     /* Generate Threads */
-    pthread_t threads[num_threads-1];
-
+    pthread_t detect_threads[num_threads-1];
+    pthread_t update_threads[num_threads-1];
+    
     /* Generate Polygons */
-    polygons = malloc(sizeof(Polygon) * NUM_POLYGONS);
     createPolygons();
 
     /* Start Time */
     gettimeofday(&start, NULL);
 
     /* CUDA kernel invocaiton */
-    //detectCollisions();
 
     for(i = 0; i < num_threads-1; i++) {
         long rank = i+1;
-        pthread_create(&threads[i], NULL, detectCollisions, (void *)(rank));
+        pthread_create(&detect_threads[i], NULL, detectCollisions, (void *)(rank));
     }
 
     /* Have main process as well */
     detectCollisions(0);
-    
+
     /* Join Threads */
     for(i = 0; i < num_threads-1; i++) {
-        pthread_join(threads[i], NULL);
+        pthread_join(detect_threads[i], NULL);
     }
-
+    
     for(i = 0; i < num_threads-1; i++) {
         long rank = i+1;
-        pthread_create(&threads[i], NULL, updateBodies, (void *)(rank));
+        pthread_create(&update_threads[i], NULL, updateBodies, (void *)(rank));
     }
 
     /* Have main process as well */
@@ -247,7 +274,7 @@ int main(int argc, char * argv[]) {
     
     /* Join Threads */
     for(i = 0; i < num_threads-1; i++) {
-        pthread_join(threads[i], NULL);
+        pthread_join(update_threads[i], NULL);
     }
 
     /* End Time */
