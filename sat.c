@@ -178,12 +178,13 @@ static void * detectCollisions(void * r) {
             }
 
             if(collision == 1) {
-                contacts[rank + j].p1 = &polygons[i];
-                contacts[rank + j].p2 = &polygons[j];
-                contacts[rank + j].n_x = min_axis[0];
-                contacts[rank + j].n_y = min_axis[1];
-                contacts[rank + j].penetration = min_overlap;
-                contacts[rank + j].used_flag = 1;
+                int index = rank * num_polygons + j;
+                contacts[index].p1 = &polygons[i];
+                contacts[index].p2 = &polygons[j];
+                contacts[index].n_x = min_axis[0];
+                contacts[index].n_y = min_axis[1];
+                contacts[index].penetration = min_overlap;
+                contacts[index].used_flag = 1;
             }
             // printf("Intersecting!\n");
 
