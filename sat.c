@@ -201,7 +201,7 @@ static void * updateBodies(void * r) {
     for(i = rank; i < num_contacts; i += num_threads) {
         if(contacts[i].used_flag == 1) {
 
-            float half_pen = contacts[i].penetration/2
+            float half_pen = contacts[i].penetration/2;
             float dx = contacts[i].n_x * half_pen;
             float dy = contacts[i].n_y * half_pen;
 
@@ -226,7 +226,6 @@ static void * updateBodies(void * r) {
 
 int main(int argc, char * argv[]) {
     /* Initialize */
-    printf("%d/n", sizeof(Contact));
     srand(time(NULL));
     register int i;
     struct timeval start, end;
@@ -242,7 +241,7 @@ int main(int argc, char * argv[]) {
     printf("Separating Axis v1.0: %d polygons %d threads\n", num_polygons, num_threads);
 
     /* Allocate Arrays */
-    num_contacts = num_polygons * num_polygons;
+    num_contacts = num_polygons;
     polygons = malloc(sizeof(Polygon) * num_polygons);
     contacts = malloc(sizeof(Contact) * num_contacts);
     for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
