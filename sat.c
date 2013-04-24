@@ -242,7 +242,7 @@ int main(int argc, char * argv[]) {
     printf("Separating Axis v1.0: %d polygons %d threads\n", num_polygons, num_threads);
 
     /* Allocate Arrays */
-    num_contacts = num_polygons;
+    num_contacts = num_polygons * num_polygons;
     polygons = malloc(sizeof(Polygon) * num_polygons);
     contacts = malloc(sizeof(Contact) * num_contacts);
     for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
