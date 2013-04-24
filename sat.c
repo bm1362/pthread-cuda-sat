@@ -4,22 +4,26 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <float.h>
+#include <math.h>
 
 typedef struct {
-    int x, y;
-    int * vertices;
+    float x, y;
+    float * vertices;
     int num_vertices;
+    pthread_mutex_t lock;
 } Polygon;
 
 typedef struct {
-    Polygon * p1, p2;
-    int n_x, n_y; /* normal axis to the polygon */
-    int penetration;
+    Polygon * p1;
+    Polygon * p2;
+    float n_x, n_y; /* normal axis to the polygon */
+    float penetration;
 } Contact;
 
 static Polygon * polygons;
 static Contact * contacts;
-static int NUM_POLYGONS, NUM_THREADS;
+static int NUM_POLYGONS, num_threads, num_contacts;
 
 void square(Polygon * polygon, int size) {
     polygon->vertices[0] = polygon->x;
@@ -38,30 +42,17 @@ void square(Polygon * polygon, int size) {
 void createPolygons() {
     int i = 0;
     for(i = 0; i < NUM_POLYGONS; i++) {
-        int x = 5; // generate position
-        int y = 5; // generate position
+        float x = 5; // generate position
+        float y = 5; // generate position
         int num_vertices = 4; // generate as well
         polygons[i].x = i * 10 + x;
         polygons[i].y = i * 10 + y;
         polygons[i].num_vertices = num_vertices;
-        polygons[i].vertices = malloc(sizeof(int) * num_vertices * 2);
+        polygons[i].vertices = malloc(sizeof(float) * num_vertices * 2);
+        pthread_mutex_init(&polygons[i].lock, NULL);
 
         int size = rand() % 10 + 3;
         square(&polygons[i], size);
-
-        // int k = 0;
-        // for(k = 0; k < polygons[i].num_vertices*2; k+=2) {
-        //     printf("polygon %d vertice %d: %d %d\n", i, k, polygons[i].vertices[k], polygons[i].vertices[k+1]);
-        // }
-
-        // int j = 0;
-        // for(j = 0; j < num_vertices; j++) {
-        //     int v1 = 5 * j; // generate random position, x > prev x
-        //     int v2 = 6 * j; // generate random position, y > prev y produces trapezoids
-
-        //     polygons[i].vertices[j] = v1;
-        //     polygons[i].vertices[j+1] = v2;
-        // }
     }
 }
 
@@ -73,9 +64,9 @@ void printPolygons() {
 }
 
 /* Projects a polygon onto a axis and returns the min, max positions. */
-void projectPolygon(Polygon * polygon, int * axis, int * ret) {
-    int max = -INT_MAX;
-    int min = INT_MAX;
+void projectPolygon(Polygon * polygon, float axis[2], float ret[2]) {
+    float max = -FLT_MAX;
+    float min = FLT_MAX;
     int i;
     for(i = 0; i < polygon->num_vertices*2; i+=2) {
         int res = polygon->vertices[i] * axis[0] + polygon->vertices[i+1] * axis[1];
@@ -88,32 +79,32 @@ void projectPolygon(Polygon * polygon, int * axis, int * ret) {
     ret[1] = max;
 }
 
-int * getEdges(Polygon * polygon) {
+float * getEdges(Polygon * polygon) {
     int num_verts = polygon->num_vertices * 2;
-    int * edges = malloc(sizeof(int) * num_verts);
+    float * edges = malloc(sizeof(int) * num_verts);
 
     int i;
     for(i = 0; i < num_verts-2; i+=2) {
-        int v2x = polygon->vertices[i+2];
-        int v2y = polygon->vertices[i+3];
-        int v1x = polygon->vertices[i];
-        int v1y = polygon->vertices[i+1];
+        float v2x = polygon->vertices[i+2];
+        float v2y = polygon->vertices[i+3];
+        float v1x = polygon->vertices[i];
+        float v1y = polygon->vertices[i+1];
 
-        int e_x = v2x - v1x;
-        int e_y = v2y - v1y;
+        float e_x = v2x - v1x;
+        float e_y = v2y - v1y;
 
         edges[i] = e_x;
         edges[i+1] = e_y;
     }
 
     // add the last edge- last vertice to the first
-    int v2x = polygon->vertices[i];
-    int v2y = polygon->vertices[i+1];
-    int v1x = polygon->vertices[0];
-    int v1y = polygon->vertices[1];
+    float v2x = polygon->vertices[i];
+    float v2y = polygon->vertices[i+1];
+    float v1x = polygon->vertices[0];
+    float v1y = polygon->vertices[1];
 
-    int e_x = v2x - v1x;
-    int e_y = v2y - v1y;
+    float e_x = v2x - v1x;
+    float e_y = v2y - v1y;
 
     edges[i] = e_x;
     edges[i+1] = e_y;
@@ -122,31 +113,47 @@ int * getEdges(Polygon * polygon) {
 }
 
 static void * detectCollisions(void * r) {
-    int i;
-    long rank = (long) r;
-    for(i = rank; i < NUM_POLYGONS; i += NUM_THREADS) {
-        int j = 0;
+    register int i, j;
+    register long rank = (long) r;
+    for(i = rank; i < NUM_POLYGONS; i += num_threads) {
         for(j = i+1; j < NUM_POLYGONS; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
             // invoke cuda stuff
-            int * i_edges = getEdges(&polygons[i]);
-            int * j_edges = getEdges(&polygons[j]);
+            float * i_edges = getEdges(&polygons[i]);
+            float * j_edges = getEdges(&polygons[j]);
             
             // merge i_edges and j_edges
-            int num_edges = (polygons[i].num_vertices*2 + polygons[j].num_vertices*2);
-            int * edges = malloc(sizeof(int) * num_edges);
-            memcpy(edges, i_edges, sizeof(int) * polygons[i].num_vertices*2);
-            memcpy(edges + (polygons[i].num_vertices*2), j_edges, sizeof(int) * polygons[j].num_vertices*2);
+            float num_edges = (polygons[i].num_vertices*2 + polygons[j].num_vertices*2);
+            float * edges = malloc(sizeof(float) * num_edges);
+            memcpy(edges, i_edges, sizeof(float) * polygons[i].num_vertices*2);
+            memcpy(edges + (polygons[i].num_vertices*2), j_edges, sizeof(float) * polygons[j].num_vertices*2);
 
             int k = 0;
             for(k = 0; k < num_edges; k+=2) {
-                int i_proj[2], j_proj[2];
+                float i_proj[2], j_proj[2];
+
+                // perp vector
+                float axis[2];
+                axis[0] = -1 * edges[k+1];
+                axis[1] = edges[k];
+
+                // normalize vector
+                float esp = .0000001; // prevent division by zero by adding trivial amount
+                float lengthsq = axis[0] * axis[0] + axis[1] * axis[1];
+                /*
+                axis[0] = axis[0] * rsqrtf(lengthsq + esp);
+                axis[1] = axis[1] * rsqrtf(lengthsq + esp);
+                */
+
+                
+                axis[0] = axis[0] / sqrtf(lengthsq + esp);
+                axis[1] = axis[1] / sqrtf(lengthsq + esp);
 
                 // project each polygon onto the axis
-                projectPolygon(&polygons[i], &edges[k], i_proj);
-                projectPolygon(&polygons[j], &edges[k], j_proj);
+                projectPolygon(&polygons[i], axis, i_proj);
+                projectPolygon(&polygons[j], axis, j_proj);
 
                 // check for overlap- determines the overlap of two line segments
-                int overlap;
+                float overlap;
                 if(i_proj[0] < j_proj[0])
                     overlap = j_proj[0] - i_proj[1];
                 else
@@ -168,7 +175,25 @@ static void * detectCollisions(void * r) {
     }
 }
 
+static void * updateBodies(void * r) {
+    register int i;
+    register long rank = (long) r;
+    for(i = rank; i < num_contacts; i += num_threads) {
+        // get lock for p1
+        pthread_mutex_lock(&contacts[i].p1->lock);
+        // update p1- moving it 1/2 the penetration along the normal axis
+        contacts[i].p1->x += contacts[i].n_x * contacts[i].penetration/2;
+        // release lock
+        pthread_mutex_unlock(&contacts[i].p1->lock);
 
+        // get lock for p2
+        pthread_mutex_lock(&contacts[i].p2->lock);
+        // update p2- moving it 1/2 the penetration along the normal axis
+        contacts[i].p2->x += contacts[i].n_x * contacts[i].penetration/2;
+        // release lock
+        pthread_mutex_unlock(&contacts[i].p2->lock);
+    }
+}
 
 int main(int argc, char * argv[]) {
     /* Initialize */
@@ -182,12 +207,12 @@ int main(int argc, char * argv[]) {
     }
 
     NUM_POLYGONS = atoi(argv[1]);
-    NUM_THREADS = atoi(argv[2]);
+    num_threads = atoi(argv[2]);
     
-    printf("Separating Axis v1.0: %d polygons %d threads\n", NUM_POLYGONS, NUM_THREADS);
+    printf("Separating Axis v1.0: %d polygons %d threads\n", NUM_POLYGONS, num_threads);
 
     /* Generate Threads */
-    pthread_t threads[NUM_THREADS-1];
+    pthread_t threads[num_threads-1];
 
     /* Generate Polygons */
     polygons = malloc(sizeof(Polygon) * NUM_POLYGONS);
@@ -196,16 +221,32 @@ int main(int argc, char * argv[]) {
     /* Start Time */
     gettimeofday(&start, NULL);
 
-    for(i = 0; i < NUM_THREADS-1; i++) {
+    /* CUDA kernel invocaiton */
+    //detectCollisions();
+
+    for(i = 0; i < num_threads-1; i++) {
         long rank = i+1;
         pthread_create(&threads[i], NULL, detectCollisions, (void *)(rank));
     }
 
     /* Have main process as well */
     detectCollisions(0);
-
+    
     /* Join Threads */
-    for(i = 0; i < NUM_THREADS-1; i++) {
+    for(i = 0; i < num_threads-1; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    for(i = 0; i < num_threads-1; i++) {
+        long rank = i+1;
+        pthread_create(&threads[i], NULL, updateBodies, (void *)(rank));
+    }
+
+    /* Have main process as well */
+    updateBodies(0);
+    
+    /* Join Threads */
+    for(i = 0; i < num_threads-1; i++) {
         pthread_join(threads[i], NULL);
     }
 
