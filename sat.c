@@ -7,12 +7,12 @@
 #include <float.h>
 #include <math.h>
 
-typedef struct {
-    float x, y;
-    float * vertices;
-    int num_vertices;
-    pthread_mutex_t lock;
-} Polygon;
+// typedef struct {
+//     float x, y;
+//     float * vertices;
+//     int num_vertices;
+//     pthread_mutex_t lock;
+// } Polygon;
 
 typedef struct {
     Polygon * p1;
@@ -22,47 +22,49 @@ typedef struct {
     int used_flag;
 } Contact;
 
-static Polygon * polygons;
+// static Polygon * polygons;
 static Contact * contacts;
-int num_polygons, num_threads, num_contacts;
 
-void square(Polygon * polygon, int size) {
-    polygon->vertices[0] = polygon->x;
-    polygon->vertices[1] = polygon->y;
+static float * polygon_x, polygon_y;
+static float * polygon_vertices;
+static int * polygon_num_vertices;
+static pthread_mutex_t polygon_lock;
 
-    polygon->vertices[2] = polygon->x+size;
-    polygon->vertices[3] = polygon->y;
-
-    polygon->vertices[4] = polygon->x+size;
-    polygon->vertices[5] = polygon->y-size;
-
-    polygon->vertices[6] = polygon->x;
-    polygon->vertices[7] = polygon->y-size;
-}
+int num_polygons, num_threads, num_contacts, num_vertices;
 
 void createPolygons() {
     int i = 0;
     for(i = 0; i < num_polygons; i++) {
-        float x = 5; // generate position
-        float y = 5; // generate position
-        int num_vertices = 4; // generate as well
-        polygons[i].x = i * 10 + x;
-        polygons[i].y = i * 10 + y;
-        polygons[i].num_vertices = num_vertices;
-        polygons[i].vertices = malloc(sizeof(float) * num_vertices * 2);
-        pthread_mutex_init(&polygons[i].lock, NULL);
+        float x = 5; // generate position- needs to be random
+        float y = 5; // generate position- needs to be random
+        polygon_x[i] = i * 10 + x;
+        polygon_y[i] = i * 10 + y;
+        polygon_num_vertices[i] = num_vertices;
+        polygon_vertices[i] = malloc(sizeof(float) * num_vertices * 2);
+        pthread_mutex_init(&polygon_lock[i], NULL);
 
+        /* make a square */
         int size = rand() % 10 + 3;
-        square(&polygons[i], size);
+        polygon_vertices[i][0] = polygon_x[i];
+        polygon_vertices[i][1] = polygon_y[i];
+
+        polygon_vertices[i][2] = polygon_x[i]+size;
+        polygon_vertices[i][3] = polygon_y[i];
+
+        polygon_vertices[i][4] = polygon_x[i]+size;
+        polygon_vertices[i][5] = polygon_y[i]-size;
+
+        polygon_vertices[i][6] = polygon_x[i];
+        polygon_vertices[i][7] = polygon_y[i]-size;
     }
 }
 
-void printPolygons() {
-    int i;
-    for(i = 0; i < num_polygons; i++) {
-        printf("Polygon %d: %d %d %d\n", i, polygons[i].x, polygons[i].y, polygons[i].num_vertices);
-    }
-}
+// void printPolygons() {
+//     int i;
+//     for(i = 0; i < num_polygons; i++) {
+//         printf("Polygon %d: %d %d %d\n", i, polygons[i].x, polygons[i].y, polygons[i].num_vertices);
+//     }
+// }
 
 /* Projects a polygon onto a axis and returns the min, max positions. */
 void projectPolygon(Polygon * polygon, float axis[2], float ret[2]) {
@@ -80,48 +82,68 @@ void projectPolygon(Polygon * polygon, float axis[2], float ret[2]) {
     ret[1] = max;
 }
 
-float * getEdges(Polygon * polygon) {
-    int num_verts = polygon->num_vertices * 2;
-    float * edges = malloc(sizeof(int) * num_verts);
-
-    int i;
-    for(i = 0; i < num_verts-2; i+=2) {
-        float v2x = polygon->vertices[i+2];
-        float v2y = polygon->vertices[i+3];
-        float v1x = polygon->vertices[i];
-        float v1y = polygon->vertices[i+1];
-
-        float e_x = v2x - v1x;
-        float e_y = v2y - v1y;
-
-        edges[i] = e_x;
-        edges[i+1] = e_y;
-    }
-
-    // add the last edge- last vertice to the first
-    float v2x = polygon->vertices[i];
-    float v2y = polygon->vertices[i+1];
-    float v1x = polygon->vertices[0];
-    float v1y = polygon->vertices[1];
-
-    float e_x = v2x - v1x;
-    float e_y = v2y - v1y;
-
-    edges[i] = e_x;
-    edges[i+1] = e_y;
-
-    return edges;
-}
-
 static void * detectCollisions(void * r) {
     register int i, j;
     register long rank = (long) r;
+
     for(i = rank; i < num_polygons; i += num_threads) {
         for(j = i+1; j < num_polygons; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
             // invoke cuda stuff
-            float * i_edges = getEdges(&polygons[i]);
-            float * j_edges = getEdges(&polygons[j]);
-            
+            float * i_edges = malloc(sizeof(int) * polygon_num_vertices[i] * 2);
+
+            int k;
+            for(k = 0; k < num_verts-2; k+=2) {
+                float v2x = polygon_vertices[i][k+2];
+                float v2y = polygon_vertices[i][k+3];
+                float v1x = polygon_vertices[i][k];
+                float v1y = polygon_vertices[i][k+1];
+
+                float e_x = v2x - v1x;
+                float e_y = v2y - v1y;
+
+                i_edges[k] = e_x;
+                i_edges[k+1] = e_y;
+            }
+
+            // add the last edge- last vertice to the first
+            float v2x = polygon_vertices[i][k];
+            float v2y = polygon_vertices[i][k+1];
+            float v1x = polygon_vertices[i][0];
+            float v1y = polygon_vertices[i][1];
+
+            float e_x = v2x - v1x;
+            float e_y = v2y - v1y;
+
+            i_edges[k] = e_x;
+            i_edges[k+1] = e_y;
+
+            float * j_edges = malloc(sizeof(int) * polygon_num_vertices[i] * 2);
+
+            for(k = 0; k < num_verts-2; k+=2) {
+                float v2x = polygon_vertices[i][k+2];
+                float v2y = polygon_vertices[i][k+3];
+                float v1x = polygon_vertices[i][k];
+                float v1y = polygon_vertices[i][k+1];
+
+                float e_x = v2x - v1x;
+                float e_y = v2y - v1y;
+
+                j_edges[k] = e_x;
+                j_edges[k+1] = e_y;
+            }
+
+            // add the last edge- last vertice to the first
+            v2x = polygon_vertices[j][k];
+            v2y = polygon_vertices[j][k+1];
+            v1x = polygon_vertices[j][0];
+            v1y = polygon_vertices[j][1];
+
+            e_x = v2x - v1x;
+            e_y = v2y - v1y;
+
+            j_edges[k] = e_x;
+            j_edges[k+1] = e_y;
+
             // merge i_edges and j_edges
             float num_edges = (polygons[i].num_vertices*2 + polygons[j].num_vertices*2);
             float * edges = malloc(sizeof(float) * num_edges);
@@ -238,12 +260,19 @@ int main(int argc, char * argv[]) {
 
     num_polygons = atoi(argv[1]);
     num_threads = atoi(argv[2]);
-    
+    num_contacts = num_polygons * num_polygons;
+    num_vertices = 4; // fixed for now
+
     printf("Separating Axis v1.0: %d polygons %d threads\n", num_polygons, num_threads);
 
     /* Allocate Arrays */
-    num_contacts = num_polygons * num_polygons;
-    polygons = malloc(sizeof(Polygon) * num_polygons);
+    
+    polygon_x[num_polygons], 
+    // polygon_y;
+    // polygon_vertices
+    // polygon_num_vertices;
+    pthread_mutex_t polygon_lock[num_polygons];
+
     contacts = malloc(sizeof(Contact) * num_contacts);
     for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
 
