@@ -244,10 +244,12 @@ static void * updateBodies(void * r) {
 }
 
 int main(int argc, char * argv[]) {
+    
     /* Initialize */
     srand(time(NULL));
     register int i;
     struct timeval start, end;
+
     /* check command line */
     if (argc != 3) {
         fprintf(stderr, "usage: %s number_of_polygons number_of_threads\n", argv[0]);
@@ -278,31 +280,20 @@ int main(int argc, char * argv[]) {
     for(i = 0; i < num_contacts; i++) { contact_used_flag[i] = 0; }    
 
     /* Generate Threads */
-    pthread_t detect_threads[num_threads-1];
     pthread_t update_threads[num_threads-1];
     
     /* Generate Polygons */
     createPolygons();
 
-    // printPolygons();
-
     /* Start Time */
     gettimeofday(&start, NULL);
 
-    // /* CUDA kernel invocaiton */
-
-    for(i = 0; i < num_threads-1; i++) {
-        long rank = i+1;
-        pthread_create(&detect_threads[i], NULL, detectCollisions, (void *)(rank));
-    }
-
-    detectCollisions(0);
-
-    /* Join Threads */
-    for(i = 0; i < num_threads-1; i++) {
-        pthread_join(detect_threads[i], NULL);
-    }
+    /* Malloc Cuda Memory */
+    /* Copy from Host to Device */
+    /* Execute Kernel */
+    /* Copy Contact data from Device to Host */
     
+    /* Update Bodies */
     for(i = 0; i < num_threads-1; i++) {
         long rank = i+1;
         pthread_create(&update_threads[i], NULL, updateBodies, (void *)(rank));
@@ -321,7 +312,17 @@ int main(int argc, char * argv[]) {
     /* Output Result */
     printf("runtime: %.4lf s\n", end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
 
-    // free(polygons);
-    // free(contacts);
+    free(polygon_x);
+    free(polygon_y);
+    free(polygon_vertices); // fixed to size [polygons][8]
+    free(polygon_num_vertices);
+    free(polygon_lock);
+    free(contact_p1);
+    free(contact_p2);
+    free(contact_n_x); /* normal axis to the polygon */
+    free(contact_n_y);
+    free(contact_penetration);
+    free(contact_used_flag);
+
     return 0;
 }
