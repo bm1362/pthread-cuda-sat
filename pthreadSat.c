@@ -46,7 +46,7 @@ static void * updateBodies(void * r) {
     return NULL;
 }
 
-void pthread_init(float * p_x, float * p_y, int * c_p1, int * c_p2, float * c_n_x, float * c_n_y, float * c_p, int * c_u_f, int n_polygons, int n_contacts, int n_threads){
+extern void pthread_init(float * p_x, float * p_y, int * c_p1, int * c_p2, float * c_n_x, float * c_n_y, float * c_p, int * c_u_f, int n_polygons, int n_contacts, int n_threads){
 	register int i;
 	pthread_t * update_threads;
     polygon_x = p_x;
