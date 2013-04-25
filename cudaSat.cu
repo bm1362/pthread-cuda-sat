@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <pthread.h>
 #include <time.h>
 #include <limits.h>
 #include <stdio.h>
@@ -70,7 +69,7 @@ __global__ void detectCollisions(int num_polygons, float * polygon_x, float * po
         for(j = i+1; j < num_polygons; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
 
             // get edges
-            float * i_edges = malloc(sizeof(int) * polygon_num_vertices[i] * 2);
+            float * i_edges[polygon_num_vertices[i] * 2];
 
             int k;
             for(k = 0; k < polygon_num_vertices[i] * 2 - 2; k+=2) {
@@ -98,7 +97,7 @@ __global__ void detectCollisions(int num_polygons, float * polygon_x, float * po
             i_edges[k] = e_x;
             i_edges[k+1] = e_y;            
 
-            float * j_edges = malloc(sizeof(int) * polygon_num_vertices[j] * 2);
+            float * j_edges[polygon_num_vertices[j] * 2];
 
             for(k = 0; k < polygon_num_vertices[j]*2-2; k+=2) {
                 float v2x = polygon_vertices[j][k+2];
@@ -129,7 +128,7 @@ __global__ void detectCollisions(int num_polygons, float * polygon_x, float * po
 
             // merge i_edges and j_edges
             float num_edges = (polygon_num_vertices[i]*2 + polygon_num_vertices[j]*2);
-            float * edges = malloc(sizeof(float) * num_edges);
+            float * edges[num_edges];
             memcpy(edges, i_edges, sizeof(float) * polygon_num_vertices[i]*2);
             memcpy(edges + (polygon_num_vertices[i]*2), j_edges, sizeof(float) * polygon_num_vertices[j]*2);
 
@@ -262,7 +261,8 @@ int main(int argc, char * argv[]) {
 
     // /* CUDA kernel invocaiton */
     blocks = (num_polygons + THREADS - 1) / THREADS;
-    float *pd_x, *pd_y, *pd_num_vert, **pdvert, int *cd_p1, int *cd_p2, float *cd_n_x, float *cd_n_y, float *cd_pen, int *cd_used_flag;
+    float *pd_x, *pd_y, *pd_num_vert, **pdvert;
+    int *cd_p1; int *cd_p2; float *cd_n_x; float *cd_n_y; float *cd_pen; int *cd_used_flag;
 
     if (cudaSuccess != cudaMalloc((void **)&pd_x, num_polygons * sizeof(float))) fprintf(stderr, "could not allocate array\n");
     if (cudaSuccess != cudaMalloc((void **)&pd_y, num_polygons * sizeof(float))) fprintf(stderr, "could not allocate array\n");
