@@ -286,7 +286,7 @@ int main(int argc, char * argv[]) {
     if (cudaSuccess != cudaMemcpy(contact_penetration, cd_pen, size * sizeof(float), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_pen from device failed\n");
     if (cudaSuccess != cudaMemcpy(contact_used_flag, cd_used_flag, size * sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_used_flag from device failed\n");
     /* Execute pthread_init */
-    pthread_init();
+    pthread_init(polygon_x, polygon_y, contact_p1, contact_p2, contact_n_x, contact_n_y, contact_penetration, contact_used_flag, num_polygons, num_contacts, num_threads);
 
     /* End Time */
     gettimeofday(&end, NULL);
