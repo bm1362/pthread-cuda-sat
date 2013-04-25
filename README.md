@@ -1,7 +1,9 @@
 pthread-cuda-sat
 ================
 
-A implementation of Separating Axis Theorem using pthreads and cuda. Currnently fixed to 4 vertices, builds squares.
+A implementation of Separating Axis Theorem using pthreads and cuda. Currently fixed to 4 vertices, builds squares.
+This was last minute effort- doesn't perform as expected.
+
 
 Compiling (on TACC/Stampede):
 	
