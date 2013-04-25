@@ -7,16 +7,6 @@
 #include <float.h>
 #include <math.h>
 
-
-#define num_vertices 4
-
-// typedef struct {
-//     float x, y;
-//     float * vertices;
-//     int num_vertices;
-//     pthread_mutex_t lock;
-// } Polygon;
-
 typedef struct {
     int p1;
     int p2;
@@ -34,7 +24,7 @@ static float ** polygon_vertices; // fixed to size [polygons][8]
 static int * polygon_num_vertices;
 static pthread_mutex_t *polygon_lock;
 
-static int num_polygons, num_threads, num_contacts;
+static int num_polygons, num_threads, num_contacts, num_vertices;
 
 void createPolygons() {
     int i = 0;
@@ -195,7 +185,6 @@ static void * detectCollisions(void * r) {
                     overlap = i_proj[0] - j_proj[1];
 
                 if(overlap > 0) {
-                    // printf("Not intersecting!\n");
                     collision = 0;
                     break;
                 }
@@ -205,14 +194,10 @@ static void * detectCollisions(void * r) {
                     min_axis[0] = axis[0];
                     min_axis[1] = axis[1];
                 }
-
-                // printf("Overlap: %d\n", overlap);
             }
 
             if(collision == 1) {
                 int index = rank * num_polygons + j;
-                // printf("i&j: %d %d\n", i, j);
-                // printf("p1&p2: %f %f\n", polygon_x[i], polygon_x[j]);
                 contacts[index].p1 = i;
                 contacts[index].p2 = j;
                 contacts[index].n_x = min_axis[0];
@@ -221,9 +206,9 @@ static void * detectCollisions(void * r) {
                 contacts[index].used_flag = 1;
             }
 
-            // free(i_edges);
-            // free(j_edges);
-            // free(edges);
+            free(i_edges);
+            free(j_edges);
+            free(edges);
         }
     }
 }
@@ -234,27 +219,25 @@ static void * updateBodies(void * r) {
 
     for(i = rank; i < num_contacts; i += num_threads) {
         if(contacts[i].used_flag == 1) {
-            float half_pen = contacts[i].penetration;
+            float half_pen = contacts[i].penetration/2;
             float dx = contacts[i].n_x * half_pen;
             float dy = contacts[i].n_y * half_pen;
 
-            printf("%d %x\n", &polygon_lock[contacts[i].p1]);
-            pthread_mutex_t * lock = &polygon_lock[contacts[i].p1];
             // get lock for p1
-            pthread_mutex_lock(lock);
+            pthread_mutex_lock(&polygon_lock[contacts[i].p1]);
             // update p1- moving it 1/2 the penetration along the normal axis
             polygon_x[contacts[i].p1] += dx;
             polygon_y[contacts[i].p1] += dy;
             // release lock
-            pthread_mutex_unlock(lock);
+            pthread_mutex_unlock(&polygon_lock[contacts[i].p1]);
 
-            // // get lock for p2
-            // pthread_mutex_lock(&polygon_lock[contacts[i].p2]);
-            // // update p2- moving it 1/2 the penetration away on the normal axis
-            // polygon_x[contacts[i].p2] -= dx;
-            // polygon_y[contacts[i].p2] -= dy;
-            // // release lock
-            // pthread_mutex_unlock(&polygon_lock[contacts[i].p2]);
+            // get lock for p2
+            pthread_mutex_lock(&polygon_lock[contacts[i].p2]);
+            // update p2- moving it 1/2 the penetration away on the normal axis
+            polygon_x[contacts[i].p2] -= dx;
+            polygon_y[contacts[i].p2] -= dy;
+            // release lock
+            pthread_mutex_unlock(&polygon_lock[contacts[i].p2]);
 
         }
     }
@@ -274,6 +257,7 @@ int main(int argc, char * argv[]) {
     num_polygons = atoi(argv[1]);
     num_threads = atoi(argv[2]);
     num_contacts = num_polygons * num_polygons;
+    num_vertices = 4;
 
     printf("Separating Axis v1.0: %d polygons %d threads %d \n", num_polygons, num_threads, num_vertices);
 
@@ -281,8 +265,8 @@ int main(int argc, char * argv[]) {
     polygon_x = (float *) malloc(sizeof(float) * num_polygons); 
     polygon_y = (float *) malloc(sizeof(float) * num_polygons);
     polygon_num_vertices = (int *) malloc(sizeof(int) * num_polygons);
-    polygon_vertices = (float **) malloc(sizeof(float) * num_polygons);
-    polygon_lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t) * num_polygons);
+    polygon_vertices = (float **) malloc(sizeof(float*) * num_polygons);
+    polygon_lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t*) * num_polygons);
 
     contacts = malloc(sizeof(Contact) * num_contacts);
     for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
@@ -322,7 +306,6 @@ int main(int argc, char * argv[]) {
     
     /* Join Threads */
     for(i = 0; i < num_threads-1; i++) {
-        printf("waiting on join: %d left\n", num_threads-i-1);
         pthread_join(update_threads[i], NULL);
     }
 
