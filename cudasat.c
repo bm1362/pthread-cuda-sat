@@ -6,6 +6,7 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <cuda.h>
 
 #define THREADS 512
 
@@ -216,6 +217,7 @@ __global__ void detectCollisions(int num_polygons, float * polygon_x, float * po
 
 
 int main(int argc, char * argv[]) {
+    register int blocks;
     /* Initialize */
     srand(time(NULL));
     register int i;
