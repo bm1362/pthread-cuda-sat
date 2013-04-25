@@ -258,7 +258,7 @@ int main(int argc, char * argv[]) {
     //detectCollisions(0);
 
     /* Execute pthread_init */
-    pthread_init();
+    pthread_init(polygon_x, polygon_y, contact_p1, contact_p2, contact_n_x, contact_n_y, contact_penetration, contact_used_flag, num_polygons, num_contacts, num_threads);
 
     /* End Time */
     gettimeofday(&end, NULL);
