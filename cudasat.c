@@ -7,6 +7,8 @@
 #include <float.h>
 #include <math.h>
 
+#define THREADS 512
+
 /* Polygon 'Struct' */
 static float * polygon_x;
 static float * polygon_y;
@@ -56,11 +58,14 @@ void printPolygons() {
     }
 }
 
-__device__ void detectCollisions() {
+__global__ void detectCollisions(int num_polygons, float * polygon_x, float * polygon_y, 
+                                 int polygon_num_vertices, float ** polygon_vertices, int * contact_p1, int * contact_p2,
+                                 float * contact_n_x, float * contact_n_y, float * contact_penetration, float * contact_used_flag) {
     register int i, j;
-    register long rank = (long) r;
+    int rank = threadIdx.x + blockIdx.x * blockDim.x;
 
-    for(i = rank; i < num_polygons; i += num_threads) {
+
+    if(rank < num_polygons) {
         for(j = i+1; j < num_polygons; j++) { // prevents duplicate checks- each polygon only checks the one behind it in the list.
 
             // get edges
@@ -254,9 +259,32 @@ int main(int argc, char * argv[]) {
     gettimeofday(&start, NULL);
 
     // /* CUDA kernel invocaiton */
+    blocks = (num_polygons + THREADS - 1) / THREADS;
+    float *pd_x, *pd_y, *pd_num_vert, **pdvert, int *cd_p1, int *cd_p2, float *cd_n_x, float *cd_n_y, float *cd_pen, int *cd_used_flag;
 
-    //detectCollisions(0);
+    if (cudaSuccess != cudaMalloc((void **)&pd_x, num_polygons * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&pd_y, num_polygons * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&pd_num_vert, num_polygons * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void ***)&pdvert, num_polygons * sizeof(float*))) fprintf(stderr, "could not allocate array\n");
 
+    if (cudaSuccess != cudaMalloc((void **)&cd_p1, num_contacts * sizeof(int))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&cd_p2, num_contacts * sizeof(int))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&cd_n_x, num_contacts * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&cd_n_y, num_contacts * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&cd_pen, num_contacts * sizeof(float))) fprintf(stderr, "could not allocate array\n");
+    if (cudaSuccess != cudaMalloc((void **)&cd_used_flag, num_contacts * sizeof(int))) fprintf(stderr, "could not allocate array\n");
+
+    if (cudaSuccess != cudaMemcpy(pd_x, polygon_x, num_polygons * sizeof(float), cudaMemcpyHostToDevice)) fprintf(stderr, "copying of polygon_x to device failed\n");
+    if (cudaSuccess != cudaMemcpy(pd_y, polygon_y, num_polygons * sizeof(float), cudaMemcpyHostToDevice)) fprintf(stderr, "copying of polygon_y to device failed\n");
+    if (cudaSuccess != cudaMemcpy(pd_num_vert, polygon_num_vertices, num_polygons * sizeof(float), cudaMemcpyHostToDevice)) fprintf(stderr, "copying of polygon_num_vertices to device failed\n");
+    if (cudaSuccess != cudaMemcpy(pdvert, polygon_vertices, num_polygons * sizeof(float*), cudaMemcpyHostToDevice)) fprintf(stderr, "copying of polygon_vertices to device failed\n");
+    detectCollisions<<<blocks, THREADS>>>(num_polygons, pd_x, pd_y, pd_num_vert, pdvert, cd_p1, cd_p2, cd_n_x, cd_n_y, cd_pen, cd_used_flag);
+    if (cudaSuccess != cudaMemcpy(contact_p1, cd_p1, size * sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_p1 from device failed\n");
+    if (cudaSuccess != cudaMemcpy(contact_p2, cd_p2, size * sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_p2 from device failed\n");
+    if (cudaSuccess != cudaMemcpy(contact_n_x, cd_n_x, size * sizeof(float), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_n_x from device failed\n");
+    if (cudaSuccess != cudaMemcpy(contact_n_y, cd_n_y, size * sizeof(float), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_n_y from device failed\n");
+    if (cudaSuccess != cudaMemcpy(contact_penetration, cd_pen, size * sizeof(float), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_pen from device failed\n");
+    if (cudaSuccess != cudaMemcpy(contact_used_flag, cd_used_flag, size * sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "copying of cd_used_flag from device failed\n");
     /* Execute pthread_init */
     pthread_init();
 
