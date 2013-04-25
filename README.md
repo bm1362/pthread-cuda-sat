@@ -7,7 +7,7 @@ Compiling:
 	
 	load module cuda
 	nvcc -O3 -arch=sm_35 -c cudaSat.cu -o CUcode.o -lcuda
-	mpicc -xhost -pthread -O3 -c code.c -o Ccode.o
+	mpicc -xhost -pthread -O3 -c pthreadSat.c -o Ccode.o
 
 Linking:
 
