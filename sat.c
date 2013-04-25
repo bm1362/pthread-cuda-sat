@@ -7,22 +7,20 @@
 #include <float.h>
 #include <math.h>
 
-typedef struct {
-    int p1;
-    int p2;
-    float n_x, n_y; /* normal axis to the polygon */
-    float penetration;
-    int used_flag;
-} Contact;
-
-// static Polygon * polygons;
-static Contact * contacts;
-
+/* Polygon 'Struct' */
 static float * polygon_x;
 static float * polygon_y;
 static float ** polygon_vertices; // fixed to size [polygons][8]
 static int * polygon_num_vertices;
-static pthread_mutex_t *polygon_lock;
+static pthread_mutex_t * polygon_lock;
+
+/* Contact 'Struct' */
+static int * contact_p1;
+static int * contact_p2;
+static float * contact_n_x; /* normal axis to the polygon */
+static float * contact_n_y;
+static float * contact_penetration;
+static int * contact_used_flag;
 
 static int num_polygons, num_threads, num_contacts, num_vertices;
 
@@ -198,12 +196,12 @@ static void * detectCollisions(void * r) {
 
             if(collision == 1) {
                 int index = rank * num_polygons + j;
-                contacts[index].p1 = i;
-                contacts[index].p2 = j;
-                contacts[index].n_x = min_axis[0];
-                contacts[index].n_y = min_axis[1];
-                contacts[index].penetration = min_overlap;
-                contacts[index].used_flag = 1;
+                contact_p1[index] = i;
+                contact_p2[index] = j;
+                contact_n_x[index] = min_axis[0];
+                contact_n_y[index] = min_axis[1];
+                contact_penetration[index] = min_overlap;
+                contact_used_flag[index] = 1;
             }
 
             free(i_edges);
@@ -218,26 +216,28 @@ static void * updateBodies(void * r) {
     register long rank = (long) r;
 
     for(i = rank; i < num_contacts; i += num_threads) {
-        if(contacts[i].used_flag == 1) {
-            float half_pen = contacts[i].penetration/2;
-            float dx = contacts[i].n_x * half_pen;
-            float dy = contacts[i].n_y * half_pen;
+        if(contact_used_flag[i] == 1) {
+            float half_pen = contact_penetration[i]/2;
+            float dx = contact_n_x[i] * half_pen;
+            float dy = contact_n_y[i] * half_pen;
 
+            int p1 = contact_p1[i];
+            int p2 = contact_p2[i];
             // get lock for p1
-            pthread_mutex_lock(&polygon_lock[contacts[i].p1]);
+            pthread_mutex_lock(&polygon_lock[p1]);
             // update p1- moving it 1/2 the penetration along the normal axis
-            polygon_x[contacts[i].p1] += dx;
-            polygon_y[contacts[i].p1] += dy;
+            polygon_x[p1] += dx;
+            polygon_y[p1] += dy;
             // release lock
-            pthread_mutex_unlock(&polygon_lock[contacts[i].p1]);
+            pthread_mutex_unlock(&polygon_lock[p1]);
 
             // get lock for p2
-            pthread_mutex_lock(&polygon_lock[contacts[i].p2]);
+            pthread_mutex_lock(&polygon_lock[p2]);
             // update p2- moving it 1/2 the penetration away on the normal axis
-            polygon_x[contacts[i].p2] -= dx;
-            polygon_y[contacts[i].p2] -= dy;
+            polygon_x[p2] -= dx;
+            polygon_y[p2] -= dy;
             // release lock
-            pthread_mutex_unlock(&polygon_lock[contacts[i].p2]);
+            pthread_mutex_unlock(&polygon_lock[p2]);
 
         }
     }
@@ -268,8 +268,14 @@ int main(int argc, char * argv[]) {
     polygon_vertices = (float **) malloc(sizeof(float*) * num_polygons);
     polygon_lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t*) * num_polygons);
 
-    contacts = malloc(sizeof(Contact) * num_contacts);
-    for(i = 0; i < num_contacts; i++) { contacts[i].used_flag = 0; }    
+    contact_p1 = (int *) malloc(sizeof(int) * num_contacts);
+    contact_p2 = (int *) malloc(sizeof(int) * num_contacts);
+    contact_n_x = (float *) malloc(sizeof(float) * num_contacts);
+    contact_n_y = (float *) malloc(sizeof(float) * num_contacts);
+    contact_penetration = (float *) malloc(sizeof(float) * num_contacts);
+    contact_used_flag = (int *) malloc(sizeof(int) * num_contacts);
+
+    for(i = 0; i < num_contacts; i++) { contact_used_flag[i] = 0; }    
 
     /* Generate Threads */
     pthread_t detect_threads[num_threads-1];
