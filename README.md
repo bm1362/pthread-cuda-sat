@@ -3,9 +3,9 @@ pthread-cuda-sat
 
 A implementation of Separating Axis Theorem using pthreads and cuda. Currnently fixed to 4 vertices, builds squares.
 
-Compiling:
+Compiling (on TACC/Stampede):
 	
-	load module cuda
+	module load cuda
 	nvcc -O3 -arch=sm_35 -c cudaSat.cu -o CUcode.o -lcuda
 	mpicc -xhost -pthread -O3 -c pthreadSat.c -o Ccode.o
 
